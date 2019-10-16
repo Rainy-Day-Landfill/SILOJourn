@@ -201,20 +201,25 @@ class Journaler():
             self.do_browse_topics()
 
     # return a list of tasks
-    def _get_todos(self):
+    def _get_todos(self, complete=False):
         for file in sorted( glob.glob(f"{self.config.get_journal_path()}**/*", recursive=False) ):
             with open( file ) as _file:
                 for position, line in enumerate(_file.readlines()):
                     m = re.search("^TODO(.+?)$", line.rstrip().lstrip() )
                     if m:
-                        print("match found")
                         task = Task(
                             file,
                             m.group(1).rstrip().lstrip(),
                             position
                         )
-                        if not self._check_task_completion( task ):
-                            yield task
+                        if complete == True:
+                            # we only want completed tasks
+                            if self._check_task_completion( task ):
+                                yield task
+                        else:
+                            # we only want incomplete tasks
+                            if not self._check_task_completion( task ):
+                                yield task
 
     # check if task is completed
     def _check_task_completion( self, task ):
@@ -230,7 +235,6 @@ class Journaler():
         with open( self.config.tracker, 'r' ) as tracker_file:
             for line in tracker_file:
                 m = re.search( "^{0}\t.*$".format( task.hash ), line )
-                print(line)
                 if m:
                     return True
         return False
@@ -248,24 +252,83 @@ class Journaler():
                 )
             )
 
+    def _mark_task_incomplete(self, task):
+        print( "marking task {} complete".format( task.hash ) )
+        # remove any line that starts with this hash
+        with open( self.config.tracker, 'r' ) as tracker_file_r:
+            lines = tracker_file_r.readlines()
+        with open( self.config.tracker, 'w' ) as tracker_file_w:
+            t = []
+            for line in lines:
+                if not line.startswith(task.hash):
+                    tracker_file_w.write(line)
+
+
+    def do_browse_completed_todo(self):
+        choices = list()
+
+        for todo in self._get_todos(complete=True):
+            choices.append(
+                (todo.hash, "({0}) {1}".format(todo.topic, todo.text), False)
+            )
+
+        if len(choices) > 0:
+            code, hashes_marked_incomplete = self.d.checklist(
+                text="Completed Tasks",
+                choices=choices,
+                backtitle="Select tasks to remark as incomplete...",
+                width=self.d.maxsize()[1],
+                ok_label="Re-Open",
+                cancel_label="Pending Tasks",
+                help_button=True,
+                help_label="Journal"
+            )
+
+            if code == self.d.OK:
+                # mark these tasks as open by removing from the file
+                tasks_to_open = list()
+                for task in self._get_todos(complete=True):
+                    for item in hashes_marked_incomplete:
+                        if todo.hash == item:
+                            tasks_to_open.append( task )
+
+                for selection in tasks_to_open:
+                    self._mark_task_incomplete( selection )
+
+            if code == self.d.CANCEL:
+                # go to pending tasks view
+                self.do_browse_todo_entries()
+
+            if code == self.d.HELP:
+                # go to journal view
+                self.do_browse_topics()
+
+        else:
+            # no completed tasks, go to incomplete tasks view
+            self.do_browse_todo_entries()
+
+
+
+
+
     def do_browse_todo_entries(self):
         choices = list()
 
-        for todo in self._get_todos():
-            print(todo.text)
+        for todo in self._get_todos(complete=False):
             choices.append(
                 ( todo.hash, "({0}) {1}".format(todo.topic, todo.text) , False )
             )
 
-
         if len(choices) > 0:
             code, hashes_marked_complete = self.d.checklist(
-                text="TODO Entries",
+                text="Incomplete Tasks",
                 choices=choices,
                 backtitle="Select tasks to complete.",
                 width=self.d.maxsize()[1],
-                cancel_label="Exit",
-                ok_label="Complete"
+                cancel_label="Journal",
+                ok_label="Complete",
+                extra_button=True,
+                extra_label="Log..."
             )
 
             if code == self.d.OK:
@@ -283,6 +346,12 @@ class Journaler():
 
                 for selection in tasks_to_complete:
                     self._mark_task_complete( selection )
+
+            elif code == self.d.CANCEL:
+                self.do_browse_topics()
+            elif code == self.d.EXTRA:
+                self.do_browse_completed_todo()
+
         else:
             # no todo items
             self.do_browse_topics()
@@ -312,13 +381,17 @@ class Journaler():
                 cancel_label="Exit",
                 ok_label="Select",
                 extra_button=True,
-                extra_label="New topic for today..."
+                extra_label="New topic for today...",
+                help_label="Task Manager",
+                help_button=True
             )
 
             if code == self.d.OK:
                 self.do_date_browse_by_topic(topic)
             elif code == self.d.EXTRA:
                 self.create_new_topic_ui()
+            elif code == self.d.HELP:
+                self.do_browse_todo_entries()
         else:
             # no topics yet, create one
             self.create_new_topic_ui()
