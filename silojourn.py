@@ -202,6 +202,8 @@ class Journaler():
 
     # return a list of tasks
     def _get_todos(self, complete=False):
+        result = list()
+
         for file in sorted( glob.glob(f"{self.config.get_journal_path()}**/*", recursive=False) ):
             with open( file ) as _file:
                 for position, line in enumerate(_file.readlines()):
@@ -215,11 +217,13 @@ class Journaler():
                         if complete == True:
                             # we only want completed tasks
                             if self._check_task_completion( task ):
-                                yield task
+                                result.append(task)
                         else:
                             # we only want incomplete tasks
                             if not self._check_task_completion( task ):
-                                yield task
+                                result.append(task)
+
+        return sorted( result, key=lambda r: r.topic, reverse=True )
 
     # check if task is completed
     def _check_task_completion( self, task ):
@@ -267,7 +271,8 @@ class Journaler():
     def do_browse_completed_todo(self):
         choices = list()
 
-        for todo in self._get_todos(complete=True):
+        todos = self._get_todos(complete=True)
+        for todo in todos:
             choices.append(
                 (todo.hash, "({0}) {1}".format(todo.topic, todo.text), False)
             )
@@ -287,7 +292,7 @@ class Journaler():
             if code == self.d.OK:
                 # mark these tasks as open by removing from the file
                 tasks_to_open = list()
-                for task in self._get_todos(complete=True):
+                for task in todos:
                     for item in hashes_marked_incomplete:
                         if todo.hash == item:
                             tasks_to_open.append( task )
@@ -313,8 +318,9 @@ class Journaler():
 
     def do_browse_todo_entries(self):
         choices = list()
+        todos = self._get_todos(complete=False)
 
-        for todo in self._get_todos(complete=False):
+        for todo in todos:
             choices.append(
                 ( todo.hash, "({0}) {1}".format(todo.topic, todo.text) , False )
             )
@@ -337,7 +343,7 @@ class Journaler():
                 tasks_to_complete = list()
 
                 # iterate through all tasks so nothing gets missed
-                for todo in self._get_todos():
+                for todo in todos:
                     # in each iteration we want to iterate through the hashes marked complete and add tasks
                     # with a matching hash to that new list
                     for item in hashes_marked_complete:
