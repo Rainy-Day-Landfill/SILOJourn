@@ -223,7 +223,11 @@ class Journaler():
         # open self.config.tracker file
         # iterate through lines
         # find line that begins with hash
-        with open( self.config.tracker, 'w+' ) as tracker_file:
+        if not os.path.exists( self.config.tracker ):
+            f = open(self.config.tracker, 'w+')
+            f.close()
+
+        with open( self.config.tracker, 'r' ) as tracker_file:
             for line in tracker_file:
                 m = re.search( "^{0}\t.*$".format( task.hash ), line )
                 print(line)
@@ -253,30 +257,35 @@ class Journaler():
                 ( todo.hash, "({0}) {1}".format(todo.topic, todo.text) , False )
             )
 
-        code, hashes_marked_complete = self.d.checklist(
-            text="TODO Entries",
-            choices=choices,
-            backtitle="Select tasks to complete.",
-            width=self.d.maxsize()[1],
-            cancel_label="Exit",
-            ok_label="Complete"
-        )
 
-        if code == self.d.OK:
-            # it only returns the hashes
-            # we want to create a new list of tasks for tasks that should be completed
-            tasks_to_complete = list()
+        if len(choices) > 0:
+            code, hashes_marked_complete = self.d.checklist(
+                text="TODO Entries",
+                choices=choices,
+                backtitle="Select tasks to complete.",
+                width=self.d.maxsize()[1],
+                cancel_label="Exit",
+                ok_label="Complete"
+            )
 
-            # iterate through all tasks so nothing gets missed
-            for todo in self._get_todos():
-                # in each iteration we want to iterate through the hashes marked complete and add tasks
-                # with a matching hash to that new list
-                for item in hashes_marked_complete:
-                    if todo.hash == item:
-                        tasks_to_complete.append(todo)
+            if code == self.d.OK:
+                # it only returns the hashes
+                # we want to create a new list of tasks for tasks that should be completed
+                tasks_to_complete = list()
 
-            for selection in tasks_to_complete:
-                self._mark_task_complete( selection )
+                # iterate through all tasks so nothing gets missed
+                for todo in self._get_todos():
+                    # in each iteration we want to iterate through the hashes marked complete and add tasks
+                    # with a matching hash to that new list
+                    for item in hashes_marked_complete:
+                        if todo.hash == item:
+                            tasks_to_complete.append(todo)
+
+                for selection in tasks_to_complete:
+                    self._mark_task_complete( selection )
+        else:
+            # no todo items
+            self.do_browse_topics()
 
     def create_new_topic_ui(self):
         input_code, input_topic = self.d.inputbox("Creating a new topic for today: {}".format(self._get_current_date()),
